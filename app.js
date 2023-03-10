@@ -28,6 +28,27 @@ const initializeDbAndServer = async () => {
 
 initializeDbAndServer();
 
+const autheticateValidUser = async (request, response, next) => {
+  const authHeader = request.headers["authorization"];
+  if (authHeader !== undefined) {
+    const jwtToken = authHeader.split(" ")[1];
+    if (jwtToken === undefined) {
+      response.status(401);
+      response.send("Invalid JWT Token");
+    } else {
+      jwt.verify(jwtToken, "123456", async (error, payload) => {
+        if (error) {
+          response.status(401);
+          response.send("Invalid JWT Token");
+        } else {
+          request.username = payload.username;
+          next();
+        }
+      });
+    }
+  }
+};
+
 app.post("/register/", async (request, response) => {
   const userRegisterDetails = request.body;
   const { username, password, name, gender } = userRegisterDetails;
@@ -73,6 +94,25 @@ app.post("/login/", async (request, response) => {
       };
       const jwtToken = jwt.sign(payload, "123456");
       response.send({ jwtToken });
+      console.log(jwtToken);
     }
   }
 });
+
+const getUserIdFromUsername = async (username) => {
+  const userIdQuery = `SELECT user_id from user WHERE username='${username}';`;
+  const userId = await db.get(userIdQuery);
+  return userId;
+};
+
+app.get(
+  "/user/tweets/feed/",
+  autheticateValidUser,
+  async (request, response) => {
+    const { username } = request;
+    const userId = await getUserIdFromUsername(username);
+    const api3Query = `SELECT username, tweet ,date_time FROM (tweet INNER JOIN follower ON tweet.user_id = follower.following_user_id) AS T NATURAL JOIN user  WHERE follower.follower_user_id = ${userId} ORDER BY date_time DESC LIMIT 4 ;`;
+    const api3Res = await db.all(api3Query);
+    response.send(api3Res);
+  }
+);
